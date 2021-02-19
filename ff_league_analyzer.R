@@ -21,7 +21,6 @@ source_python("C:/Users/hirsh/OneDrive/Desktop/Data Science Stuff/Projects/FF Le
 
 # set parameters
 #league_id <- 1382012
-league_id <- 329185
 season <- 2020
 swid = ''
 espn = ''
