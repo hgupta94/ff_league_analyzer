@@ -29,8 +29,9 @@ d <- load_data(league_id, season, swid = "", espn = "")
 params <- get_params(d)
 league_size <- params[[1]]
 
+# ros_proj <- get_ros_projections(d)
+
 # loop doesnt work???
-# #ros_proj <- get_ros_projections(d)
 # pr <- data.frame()
 # for (yr in seq(2018,season)) {
 #     d <- load_data(league_id, yr, swid="", espn="")
