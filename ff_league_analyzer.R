@@ -64,6 +64,7 @@ league_size <- params[[1]]
 
 
 # Power Ranking -----------------------------------------------------------
+# two problems: loop doesn't work and new leagues will not be weighted so a baseline is needed
 ssn <- 2018
 d <- load_data(1382012, ssn, swid, espn)
 regular_season_end <- d$settings$scheduleSettings$matchupPeriodCount
