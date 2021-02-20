@@ -64,7 +64,7 @@ league_size <- params[[1]]
 
 
 # Power Ranking -----------------------------------------------------------
-# two problems: loop doesn't work and new leagues will not be weighted so a baseline is needed
+# two problems: loop doesn't work and new leagues will not be weighted if a loop is used so a baseline is needed
 ssn <- 2018
 d <- load_data(1382012, ssn, swid, espn)
 regular_season_end <- d$settings$scheduleSettings$matchupPeriodCount
@@ -107,8 +107,8 @@ get_weights <- function(){
     set.seed(1)
     cv <- cv.glmnet(X[train,],y[train],alpha=0.5)
     
-    # Find the value of lambda from cross-validation 
-    # and see how the resulting model works on the test data
+    # Find the value of lambda from cross-validation and see how the resulting model works on the test data
+    # Use elastic net to find weights
     bestlambda <- cv$lambda.min
     elastic.mod.betas <- coef(cv, s=bestlambda)
     pred.elastic <- predict(cv, s=bestlambda, newx=X[test,])
@@ -117,15 +117,12 @@ get_weights <- function(){
     # Re-calculate the model on all of the data.
     out <- glmnet(X,y,alpha=0, lambda=bestlambda)
     en.coef <- predict(out, type="coefficients")
-    en.coef
-    
-    # go with elastic net - lasso can zero out variables and ridge seems more sensitive to early weeks
     weights <- en.coef
     
     # Apply weights to dataset
     current$power_rank_score_w <- (current$win_index * weights[2]) - ((current$luck_index) * weights[3]) + (current$consistency_index * weights[4]) + (current$score_index * weights[5]) + (current$season_index * weights[6])
     
-    # Caolculate weighed power ranks
+    # Caolculate weighted power ranks
     current <- current %>% 
         group_by(week) %>% 
         mutate(power_rank_avg_w = mean(power_rank_score_w), power_score_w = round((power_rank_score_w / power_rank_avg_w) * 100),
@@ -208,13 +205,9 @@ get_pr_score <- function(current){
     return(score_chart)
 }
 
-current <- get_weights()
-get_pr_table(get_weights())
-get_pr_rank(get_weights())
-get_pr_score(get_weights())
-
 
 # Simulations ----------------------------------------------------------------
+### Probably need to fix this...
 # sim_season <- sim_season_table
 # 
 # if(py$matchup_week < py$regular_season_end){
@@ -331,6 +324,8 @@ get_pr_score(get_weights())
 
 
 # Scenarios ---------------------------------------------------------------------
+# 1. Record vs each team each week
+# 2. Record if you had another teams schedule
 d <- load_data(league_id, season, swid="", espn="")
 regular_season_end <- get_params(d)[[3]]
 league_size <- get_params(d)[[1]]
@@ -338,6 +333,7 @@ league_size <- get_params(d)[[1]]
 scen <- scenarios(d, get_weights())
 
 get_league_records <- function(scen){
+    # 1. Record vs each team each week
     
     wins_vs_league <- scen[[1]]
     
@@ -384,7 +380,6 @@ get_league_records <- function(scen){
     diag(mat) <- ""
     record_table_new <- data.frame(mat)
     colnames(record_table_new) <- colnames(record_table)
-    #record_table_new$team <- rownames(record_table_new)
     rownames(record_table_new) <- NULL
     colnames(record_table_new)[ncol(record_table_new)] <- " "
     
@@ -399,13 +394,13 @@ get_league_records <- function(scen){
 }
 
 get_schedule_swich <- function(scen){
+    # 2. Record if you had another teams schedule
+    
     switched_sched <- scen[[2]]
-
-    # Scenario 2: Season record given another team's schedule
     switched_sched$team.sched <- rownames(switched_sched)
     act_wins <- as.numeric(diag(as.matrix(switched_sched)))
     
-    # convert df to long, get record, and find win differentials
+    # convert wide to long, calculate record, and find win differentials from actual record
     df <- reshape(switched_sched,
                   direction = "long",
                   varying = list(names(switched_sched)[1:league_size]),
@@ -467,18 +462,18 @@ get_eff <- function(){
     eff$k.eff <- 1 - ((eff$K.opts - eff$K.apts) / eff$K.opts)
     
     # combine RB/WR/TE into overall flex
-    # need to use actual flex positions
+    # need to accomodate diferent flex leagues (superflex, no TE...)
     eff$Flex.opts <- eff$RB.opts + eff$WR.opts + eff$TE.opts + eff$Flex.opts
     eff$Flex.apts <- eff$RB.apts + eff$WR.apts + eff$TE.apts + eff$Flex.apts
     eff$Flex.eff <- 1 - ((eff$Flex.opts - eff$Flex.apts) / eff$Flex.opts)
     
-    # replace nan's with 1 because that is still the most efficient outcome
+    # replace nan's with 1 because that is still the most efficient outcome (actual and optimal are 0)
     eff <- eff %>% replace(is.na(.), 1)
     
-    # replace inf with 0 - best player scored 0, but actual starter scored less
+    # replace inf with 0 (best player scored 0, but actual starter scored less)
     eff[sapply(eff, is.infinite)] <- 0
     
-    # if efficiency is >1, take the inverse
+    # if efficiency is >1, take the inverse (actual and optimal are negative, but actual is worse...and taysom fucking hill at flex)
     eff[,19:ncol(eff)][eff[,19:ncol(eff)] > 1] <- 1 / eff[,19:ncol(eff)][eff[,19:ncol(eff)] > 1]
     
     colnames(eff)[c(1,2)] <- c("Team.opts", "Team.apts")
@@ -487,7 +482,7 @@ get_eff <- function(){
 }
 
 get_optimal <- function(eff, pos = c("Team", "QB", "RB", "WR", "TE", "Flex", "D.ST", "K")){
-    ### Optimal vs Actual
+    # Optimal vs Actual by position chart
     cols <- eff %>% dplyr::select(team, week, starts_with(pos)) %>% colnames()
     
     eff2 <- eff %>% 
@@ -537,8 +532,8 @@ get_optimal <- function(eff, pos = c("Team", "QB", "RB", "WR", "TE", "Flex", "D.
     return(eff_plot)
 }
 
-### Team efficiency by position
 get_pos_eff <- function(eff){
+    # Team efficiency by position
     eff3 <- eff %>% 
         group_by(tm = team) %>% 
         summarise(team = mean(team.eff),
