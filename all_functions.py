@@ -45,6 +45,7 @@ def get_params(d):
     playoff_teams = d['settings']['scheduleSettings']['playoffTeamCount']
     
     # roster construction
+    # need to figure out IDP
     slotcodes = {
         0 : 'QB', 1 : 'QB',
         2 : 'RB', 3 : 'RB',
@@ -69,13 +70,6 @@ def get_params(d):
     team_map = dict(zip(teams.id, teams.abbrev))
     
     # Get weekly matchups
-# =============================================================================
-#     df = [[
-#             game['matchupPeriodId'],
-#             game['home']['teamId'], game['home']['totalPoints'],
-#             game['away']['teamId'], game['away']['totalPoints']
-#         ] for game in d['schedule']]
-# =============================================================================
     df = pd.DataFrame()
     for game in d['schedule']:
         if game['matchupPeriodId'] > d['settings']['scheduleSettings']['matchupPeriodCount']:
@@ -89,7 +83,6 @@ def get_params(d):
             matchups = pd.DataFrame([[week, team1, score1, team2, score2]], 
                                     columns=["week", "team1", "score1", "team2", "score2"])
             df = df.append(matchups)
-    
     df = df.replace({'team1':team_map, 'team2':team_map})
     
     #position = lineup_slots_df.pos.str.lower().drop(labels=['20','21']).tolist()
@@ -139,7 +132,6 @@ def get_ros_projections(d):
     rosters['player'] = rosters['player'].str.replace(' iv', '')
     rosters['player'] = rosters['player'].str.replace(' v', '')
     
-    
     # Add rest of season projections to players
     url = 'https://www.numberfire.com/nfl/fantasy/remaining-projections'
     
@@ -160,7 +152,6 @@ def get_ros_projections(d):
     
     # Calculate points per game
     projections['ppg'] = projections.ros_proj.astype(float) / (17 - current_week)
-    #projections['ppg'] = np.where(projections['position'] != 'qb', np.sqrt(projections['ppg']), projections['ppg'])
     
     # use average standard deviation by position from 2018-2019
     # from 'position analysis' R script
@@ -180,6 +171,7 @@ def power_rank(d, league_id, season, week=None):
     current_week = get_params(d)[3]
     matchup_week = get_params(d)[4]
     
+    # do i still need this?
     week = None
     current_year = datetime.datetime.now().year
     if week is None:
@@ -301,7 +293,8 @@ def power_rank(d, league_id, season, week=None):
                     .reset_index()
                     .rename(columns={'three_wk_avg':'three_wk_med'}))
     df_current = pd.merge(df_current, three_wk_med, how='left', on='week')
-
+    
+    # calculate indexes for power score
     df_current['win_index'] = (df_current['wins'] / (df_current['week']))
     df_current['score_index'] = (df_current['three_wk_avg'] / df_current['three_wk_med'])
     df_current['season_index'] = (df_current['total_pf'] / df_current['total_pf_med'])
@@ -321,9 +314,7 @@ def power_rank(d, league_id, season, week=None):
     # Standardize so average=100
     pr_avg = df_current.loc[:,['week', 'power_rank_score']]
     pr_avg = pr_avg.groupby('week').agg(np.mean).rename(columns={'power_rank_score':'power_rank_avg'})
-    
     df_current = pd.merge(df_current, pr_avg, on='week')
-    
     df_current['power_score'] = df_current.power_rank_score / df_current.power_rank_avg
     
     df_current['team'] = df_current['team'].str.lower()
@@ -448,7 +439,7 @@ def sim_matchups(d):
         score_sim = sim_scores()
         score_dict = dict(zip(score_sim.team, score_sim.score))
         
-        # get scores for future weeks
+        # simulate scores for future weeks
         for week in matchups.week:
             if week < sim_week:
                 continue
@@ -541,7 +532,7 @@ def get_projections(d):
         
         projections = projections.append(df)
         
-        # fix player names
+        # fix wft name
         projections['player'] = projections['player'].replace(['team d/st'],'washington d/st')
     
     return projections
@@ -749,7 +740,7 @@ def sim_playoffs(d, n_sim=10):
         Probability of winning runner up
         Probability of winning third place
     
-    Assumes 4 and 6 team playoffs
+    Only works 4 and 6 team playoffs
     '''
     
     n_teams = get_params(d)[6]
@@ -1045,6 +1036,7 @@ def scenarios(d, pr):
     return wins_vs_league, switched_sched, wins_vs_opp
 
 # %% Lineup Efficiency
+# code thanks again to steven morse
 slotcodes = {
 0 : 'QB', 1 : 'QB',
 2 : 'RB', 3 : 'RB',
